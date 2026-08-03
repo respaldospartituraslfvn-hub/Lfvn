@@ -1,8 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item
-        android:width="66dp"
-        android:height="66dp"
-        android:drawable="@drawable/metronome_tuner_icon_1785755229878"
-        android:gravity="center" />
-</layer-list>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Metronome Pendulum & Pulse Wave -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M54,24 L36,78 L72,78 Z" />
+    <path
+        android:fillColor="#121824"
+        android:pathData="M51,28 L39,74 L69,74 Z" />
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:pathData="M54,78 L66,38" />
+    <path
+        android:fillColor="#FFB300"
+        android:pathData="M61,35 L71,40 L66,48 L56,43 Z" />
+    <!-- Pulse Soundwave Bars -->
+    <path
+        android:strokeColor="#10B981"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M24,54 L24,54 M28,48 L28,60 M32,42 L32,66 M76,42 L76,66 M80,48 L80,60 M84,54 L84,54" />
+</vector>
