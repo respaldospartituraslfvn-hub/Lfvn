@@ -1,0 +1,6 @@
+{
+  "name": "MetroPulse",
+  "description": "Metrónomo preciso, firmas de tiempo, reconocedor de ritmos, biblioteca de percusión y afinador cromático de instrumentos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
