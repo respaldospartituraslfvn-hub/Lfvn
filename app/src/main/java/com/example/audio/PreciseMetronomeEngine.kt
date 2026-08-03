@@ -92,86 +92,111 @@ class PreciseMetronomeEngine(private val context: Context) {
             AudioFormat.ENCODING_PCM_16BIT
         ).coerceAtLeast(4096)
 
-        audioTrack = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build()
-            )
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .setSampleRate(sampleRate)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                    .build()
-            )
-            .setBufferSizeInBytes(bufferSize)
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .build()
-
-        audioTrack?.play()
-
-        var beatIdx = 0
-        var subIdx = 0
-
-        while (scope.isActive && _isPlaying.value) {
-            val subsCount = subdivision.count
-            
-            // Determine beat state from pattern
-            val patternIdx = beatIdx % pattern.size.coerceAtLeast(1)
-            val beatMode = if (patternIdx < pattern.size) pattern[patternIdx] else 0
-
-            val isFirstSub = subIdx == 0
-            val isAccent = isFirstSub && (beatMode == 1)
-            val isMuted = isFirstSub && (beatMode == -1)
-            val isSubdivision = !isFirstSub
-
-            // Generate PCM click audio
-            val clickPCM = if (isMuted) {
-                ShortArray(0)
-            } else {
-                AudioSynthesisEngine.generateClickBuffer(
-                    soundType = soundType,
-                    isAccent = isAccent,
-                    isSubdivision = isSubdivision,
-                    customAccentPitchHz = customAccentPitchHz,
-                    customNormalPitchHz = customNormalPitchHz,
-                    customDecayMs = customDecayMs
+        val track = try {
+            AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .build()
                 )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setSampleRate(sampleRate)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .build()
+                )
+                .setBufferSizeInBytes(bufferSize)
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .build()
+        } catch (_: Exception) {
+            _isPlaying.value = false
+            return
+        }
+
+        audioTrack = track
+
+        try {
+            track.play()
+
+            var beatIdx = 0
+            var subIdx = 0
+
+            while (scope.isActive && _isPlaying.value) {
+                val subsCount = subdivision.count
+                
+                // Determine beat state from pattern
+                val patternIdx = beatIdx % pattern.size.coerceAtLeast(1)
+                val beatMode = if (patternIdx < pattern.size) pattern[patternIdx] else 0
+
+                val isFirstSub = subIdx == 0
+                val isAccent = isFirstSub && (beatMode == 1)
+                val isMuted = isFirstSub && (beatMode == -1)
+                val isSubdivision = !isFirstSub
+
+                // Generate PCM click audio
+                val clickPCM = if (isMuted) {
+                    ShortArray(0)
+                } else {
+                    AudioSynthesisEngine.generateClickBuffer(
+                        soundType = soundType,
+                        isAccent = isAccent,
+                        isSubdivision = isSubdivision,
+                        customAccentPitchHz = customAccentPitchHz,
+                        customNormalPitchHz = customNormalPitchHz,
+                        customDecayMs = customDecayMs
+                    )
+                }
+
+                // Calculate exact tick duration in samples
+                val secondsPerBeat = 60.0 / bpm
+                val secondsPerSubTick = secondsPerBeat / subsCount
+                val totalSamplesForTick = (sampleRate * secondsPerSubTick).toInt()
+
+                val silenceSamplesCount = max(0, totalSamplesForTick - clickPCM.size)
+                val silencePCM = ShortArray(silenceSamplesCount)
+
+                // Update UI state
+                _currentBeat.value = beatIdx
+                _currentSubBeat.value = subIdx
+
+                // Trigger haptic vibration on accent beat
+                if (isAccent && enableHaptics) {
+                    triggerHaptic()
+                }
+
+                if (!_isPlaying.value || !scope.isActive) break
+
+                // Write audio to track with exception handling
+                if (clickPCM.isNotEmpty()) {
+                    val res = track.write(clickPCM, 0, clickPCM.size)
+                    if (res < 0) break
+                }
+                if (!_isPlaying.value || !scope.isActive) break
+                if (silencePCM.isNotEmpty()) {
+                    val res = track.write(silencePCM, 0, silencePCM.size)
+                    if (res < 0) break
+                }
+
+                // Advance indices
+                subIdx++
+                if (subIdx >= subsCount) {
+                    subIdx = 0
+                    beatIdx = (beatIdx + 1) % beatsPerMeasure
+                }
             }
-
-            // Calculate exact tick duration in samples
-            // BPM = beats per minute for quarter notes.
-            val secondsPerBeat = 60.0 / bpm
-            val secondsPerSubTick = secondsPerBeat / subsCount
-            val totalSamplesForTick = (sampleRate * secondsPerSubTick).toInt()
-
-            val silenceSamplesCount = max(0, totalSamplesForTick - clickPCM.size)
-            val silencePCM = ShortArray(silenceSamplesCount)
-
-            // Update UI state
-            _currentBeat.value = beatIdx
-            _currentSubBeat.value = subIdx
-
-            // Trigger haptic vibration on accent beat
-            if (isAccent && enableHaptics) {
-                triggerHaptic()
-            }
-
-            // Write audio to track
-            if (clickPCM.isNotEmpty()) {
-                audioTrack?.write(clickPCM, 0, clickPCM.size)
-            }
-            if (silencePCM.isNotEmpty()) {
-                audioTrack?.write(silencePCM, 0, silencePCM.size)
-            }
-
-            // Advance indices
-            subIdx++
-            if (subIdx >= subsCount) {
-                subIdx = 0
-                beatIdx = (beatIdx + 1) % beatsPerMeasure
+        } catch (_: Exception) {
+            // Catches any IllegalStateException when track is stopped or released
+        } finally {
+            try {
+                if (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                    track.stop()
+                }
+                track.release()
+            } catch (_: Exception) {}
+            if (audioTrack == track) {
+                audioTrack = null
             }
         }
     }
